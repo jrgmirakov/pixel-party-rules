@@ -151,7 +151,7 @@ export default function Home() {
 
         <footer className="ftr">
           <span>PIXEL PARTY © {new Date().getFullYear()}</span>
-          <span>jrgmirakov.github.io/pixel-party-rules</span>
+          <span>pixelparty-rules.mooo.com</span>
         </footer>
       </div>
 
