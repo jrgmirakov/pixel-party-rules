@@ -1,65 +1,206 @@
-import Image from "next/image";
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { supabase } from '@/lib/supabase'
+import AdminPanel from './components/AdminPanel'
+
+interface Rule {
+  id: string
+  rule_number: string
+  title: string
+  content: string
+  sort_key: string
+  section: string
+  mod_only: boolean
+}
+
+function isSection(num: string) {
+  return !num.includes('.')
+}
+
+function punBadge(text: string) {
+  const t = text.toLowerCase()
+  if (t.includes('перманентный')) return 'pun-badge pun-ban'
+  if (t.startsWith('бан'))        return 'pun-badge pun-ban'
+  if (t.startsWith('мут'))        return 'pun-badge pun-mut'
+  if (t.startsWith('кик'))        return 'pun-badge pun-kick'
+  if (t.startsWith('снятие'))     return 'pun-badge pun-rem'
+  return null
+}
+
+function MD({ text }: { text: string }) {
+  return <span className="md"><ReactMarkdown>{text}</ReactMarkdown></span>
+}
+
+function RulesList({ rules, isPunishments }: { rules: Rule[]; isPunishments: boolean }) {
+  if (rules.length === 0) return <div className="empty">Нет данных.</div>
+
+  const sections = rules.filter(r => isSection(r.rule_number))
+  const subs: Record<string, Rule[]> = {}
+  rules.filter(r => !isSection(r.rule_number)).forEach(r => {
+    const parent = r.rule_number.split('.')[0]
+    if (!subs[parent]) subs[parent] = []
+    subs[parent].push(r)
+  })
+
+  return (
+    <div className="rule-list fadein">
+      {sections.map(sec => (
+        <div key={sec.id}>
+          <div className="rule-section-header">
+            <span className="sec-num">{sec.rule_number}.</span>
+            <span className="sec-title">{sec.title}</span>
+          </div>
+          {(subs[sec.rule_number] || []).map(sub => {
+            const badgeCls = isPunishments ? punBadge(sub.title) : null
+            return (
+              <div key={sub.id} className="rule-sub">
+                <span className="sub-num">{sub.rule_number}</span>
+                <div className="sub-body">
+                  {badgeCls ? (
+                    <span className={badgeCls}><MD text={sub.title} /></span>
+                  ) : (
+                    <span className="sub-text">
+                      <MD text={sub.title} />
+                      {sub.mod_only && <span className="mod-badge">★ модерация</span>}
+                    </span>
+                  )}
+                  {sub.content && (
+                    <div className="sub-text" style={{ marginTop: 4 }}>
+                      <MD text={sub.content} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function Home() {
+  const [rules, setRules] = useState<Rule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'rules' | 'punishments'>('rules')
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [comboKeys, setComboKeys] = useState<string[]>([])
+
+  const fetchRules = useCallback(async () => {
+    const { data } = await supabase.from('rules').select('*').order('sort_key', { ascending: true })
+    setRules(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchRules() }, [fetchRules])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey) {
+        const k = e.key.toUpperCase()
+        setComboKeys(prev => {
+          const next = [...prev, k].slice(-2)
+          if (next[0] === 'X' && next[1] === 'A') { setLoginOpen(true); return [] }
+          return next
+        })
+      } else {
+        setComboKeys([])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const shown = rules.filter(r => r.section === tab)
+  const ruleCount = rules.filter(r => r.section === 'rules' && !isSection(r.rule_number)).length
+  const punCount  = rules.filter(r => r.section === 'punishments' && !isSection(r.rule_number)).length
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div style={{ minHeight: '100vh' }}>
+      <div className="wrap">
+        <header className="hdr">
+          <div className="hdr-eyebrow">Pixel Party</div>
+          <h1 className="hdr-title">Правила сервера</h1>
+          <div className="hdr-sub">
+            <span>Редакция от {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            <span style={{ color: 'var(--border2)' }}>|</span>
+            <span>{ruleCount} пунктов · {punCount} наказаний</span>
+          </div>
+          <div className="hdr-note">
+            ★ — пункты, отмеченные значком «модерация», относятся только к составу модерации, но полезны для общего понимания.
+          </div>
+        </header>
+
+        <nav className="tabs">
+          <button className={`tab-btn${tab === 'rules' ? ' active' : ''}`} onClick={() => setTab('rules')}>
+            Правила
+          </button>
+          <button className={`tab-btn${tab === 'punishments' ? ' active' : ''}`} onClick={() => setTab('punishments')}>
+            Наказания
+          </button>
+        </nav>
+
+        {loading ? (
+          <div className="empty">Загрузка...</div>
+        ) : (
+          <RulesList rules={shown} isPunishments={tab === 'punishments'} />
+        )}
+
+        <footer className="ftr">
+          <span>PIXEL PARTY © {new Date().getFullYear()}</span>
+          <span>jrgmirakov.github.io/pixel-party-rules</span>
+        </footer>
+      </div>
+
+      {loginOpen && !adminOpen && (
+        <LoginModal
+          onSuccess={() => { setLoginOpen(false); setAdminOpen(true) }}
+          onClose={() => setLoginOpen(false)}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
+      {adminOpen && (
+        <AdminPanel rules={rules} onClose={() => setAdminOpen(false)} onRefresh={fetchRules} />
+      )}
     </div>
-  );
+  )
+}
+
+function LoginModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+  const [pw, setPw] = useState('')
+  const [err, setErr] = useState('')
+  const PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'pixelparty2025'
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (pw === PASS) onSuccess()
+    else { setErr('Неверный пароль.'); setPw('') }
+  }
+
+  return (
+    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 340 }}>
+        <div className="modal-hdr">
+          <span className="modal-ttl">Вход</span>
+          <button className="modal-x" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-bd">
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="field">
+              <label className="lbl">Пароль</label>
+              <input type="password" value={pw} onChange={e => { setPw(e.target.value); setErr('') }}
+                placeholder="••••••••" className="inp" autoFocus />
+              {err && <span style={{ fontSize: 12, color: 'var(--accent)' }}>{err}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-ghost" onClick={onClose}>Отмена</button>
+              <button type="submit" className="btn btn-red">Войти</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
 }
