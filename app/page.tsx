@@ -122,8 +122,11 @@ export default function Home() {
     <div style={{ minHeight: '100vh' }}>
       <div className="wrap">
         <header className="hdr">
-          <div className="hdr-eyebrow">Pixel Party</div>
-          <h1 className="hdr-title">Правила сервера</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', marginBottom: 8 }}>
+            <img src="/server-icon.png" alt="Pixel Party" style={{ width: 48, height: 48, borderRadius: 12, imageRendering: 'pixelated' }} />
+            <h1 className="hdr-title" style={{ margin: 0 }}>Pixel Party</h1>
+          </div>
+          <div className="hdr-eyebrow">Правила сервера</div>
           <div className="hdr-sub">
             <span>Редакция от {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
             <span style={{ color: 'var(--border2)' }}>|</span>
